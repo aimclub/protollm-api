@@ -1,4 +1,9 @@
-from fastapi import APIRouter
+from typing import Annotated
+
+from fastapi import APIRouter, Depends
+
+from protollm_api.backend.bll.services.chat_complition import ChatCompletionService
+from protollm_api.backend.bll.services.generate import GenerateService
 from protollm_api.backend.broker import send_task, logger, get_result
 from protollm_api.backend.config import Config
 from protollm_api.backend.models.job_context_models import ResponseModel, ChatCompletionTransactionModel, PromptModel, \
@@ -14,29 +19,35 @@ def get_sync_chat_router(config: Config, redis_db: RedisResultStorage, rabbitmq:
         responses={404: {"description": "Not found"}},
     )
 
+    def get_chat_completion_service(
+            redis: RedisResultStorage = Depends(lambda: redis_db),
+            rmq: RabbitMQQueue = Depends(lambda: rabbitmq),
+            cfg: Config = Depends(lambda: config)
+    ) -> ChatCompletionService:
+        return ChatCompletionService(redis, rmq, cfg)
+
+    def get_generate_service(
+            redis: RedisResultStorage = Depends(lambda: redis_db),
+            rmq: RabbitMQQueue = Depends(lambda: rabbitmq),
+            cfg: Config = Depends(lambda: config)
+    ) -> GenerateService:
+        return GenerateService(redis, rmq, cfg)
+
     @router.post('/generate', response_model=ResponseModel)
-    async def generate(prompt_data: PromptModel, queue_name: str = config.queue_name):
-        transaction_model = ChatCompletionTransactionModel(
-            prompt=ChatCompletionModel.from_prompt_model(prompt_data),
-            prompt_type=PromptTypes.CHAT_COMPLETION.value
-        )
-        await send_task(config, queue_name, transaction_model, rabbitmq, redis_db)
-        result = await get_result(config, prompt_data.job_id, redis_db)
-        logger.info(f"Task {prompt_data.job_id} was sent to LLM.")
-        return result
+    async def generate(
+            generate_service: Annotated[GenerateService, Depends(get_generate_service)],
+            prompt_data: PromptModel,
+            queue_name: str = config.queue_name
+    ):
+        return await generate_service.get_generate(prompt_data, queue_name)
 
     @router.post('/chat_completion', response_model=ResponseModel)
     async def chat_completion(
+            chat_completion_service: Annotated[ChatCompletionService, Depends(get_chat_completion_service)],
             prompt_data: ChatCompletionModel,
-            #chat_completion_service: Annotated[ChatCompletionService, Depends()], # chat_completion_service: ChatCompletionService = Depends()
             queue_name: str = config.queue_name,
     ):
-        transaction_model = ChatCompletionTransactionModel(
-            prompt=prompt_data,
-            prompt_type=PromptTypes.CHAT_COMPLETION.value
-        )
-        await send_task(config, queue_name, transaction_model, rabbitmq, redis_db)
-        logger.info(f"Task {prompt_data.job_id} was sent to LLM.")
-        return await get_result(config, prompt_data.job_id, redis_db)
+        return await chat_completion_service.get_chat_completion(prompt_data, queue_name)
+
 
     return router
