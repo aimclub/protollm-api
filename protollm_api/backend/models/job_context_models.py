@@ -86,6 +86,8 @@ class ToEmbed(BaseModel):
     inputs: str
     truncate: bool
 
-
 class TextEmbedderResponse(BaseModel):
     embeddings: list[float]
+
+class QueuesNames(BaseModel):
+    queues_names: list[str]

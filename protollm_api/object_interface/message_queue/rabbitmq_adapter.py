@@ -10,6 +10,7 @@ The rest of the adapter remains unchanged.
 """
 import json
 import logging
+import subprocess
 import threading
 import time
 from typing import Any, Callable, Optional
@@ -21,6 +22,8 @@ from .base import BaseMessageQueue, ReceivedMessage
 
 log = logging.getLogger(__name__)
 
+import requests
+from requests.auth import HTTPBasicAuth
 
 class RabbitMQQueue(BaseMessageQueue):  # noqa: WPS230
     """Synchronous RabbitMQ adapter."""
@@ -35,6 +38,7 @@ class RabbitMQQueue(BaseMessageQueue):  # noqa: WPS230
         *,
         host: str = "localhost",
         port: int = 5672,
+        api_port: int = 15672,
         virtual_host: str = "/",
         username: str = "guest",
         password: str = "guest",
@@ -53,6 +57,9 @@ class RabbitMQQueue(BaseMessageQueue):  # noqa: WPS230
         self._channel: pika.channel.Channel | None = None
         self._consumer_tags: list[str] = []
         self._consume_thread: threading.Thread | None = None
+
+        self._api_url = f"http://{host}:{api_port}/api"
+        self._http_auth = HTTPBasicAuth(username, password)
 
     # ------------------------------------------------------------------
     # Base overrides
@@ -218,4 +225,19 @@ class RabbitMQQueue(BaseMessageQueue):  # noqa: WPS230
     def nack(self, delivery_tag: Any, *, requeue: bool = True) -> None:  # noqa: D401
         assert self._channel, "connect() must be called first"
         self._channel.basic_nack(delivery_tag=delivery_tag, requeue=requeue)
+
+    # ------------------------------------------------------------------
+    # Queue
+    # ------------------------------------------------------------------
+    def list_queues_http(self, timeout: float = 5.0) -> list[str]:
+        """Получает список очередей через HTTP API."""
+        url = f"{self._api_url}/queues"
+        try:
+            response = requests.get(url, auth=self._http_auth, timeout=timeout)
+            response.raise_for_status()
+        except requests.RequestException as e:
+            raise RuntimeError(f"Ошибка запроса к RabbitMQ HTTP API: {e}")
+
+        return [q["name"] for q in response.json()]
+
 
