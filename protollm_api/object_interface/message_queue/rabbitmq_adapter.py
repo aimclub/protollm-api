@@ -229,15 +229,45 @@ class RabbitMQQueue(BaseMessageQueue):  # noqa: WPS230
     # ------------------------------------------------------------------
     # Queue
     # ------------------------------------------------------------------
-    def list_queues_http(self, timeout: float = 5.0) -> list[str]:
-        """Получает список очередей через HTTP API."""
+    def list_queues(self, timeout: float = 5.0) -> list[str]:
         url = f"{self._api_url}/queues"
         try:
             response = requests.get(url, auth=self._http_auth, timeout=timeout)
             response.raise_for_status()
         except requests.RequestException as e:
-            raise RuntimeError(f"Ошибка запроса к RabbitMQ HTTP API: {e}")
+            raise RuntimeError(f"RabbitMQ HTTP API request error: {e}")
 
         return [q["name"] for q in response.json()]
 
+    def get_queue_info(self, queue_name: str, timeout: float = 5.0) -> dict:
+        vhost_encoded = requests.utils.quote(self._params.virtual_host, safe='')
+        url = f"{self._api_url}/queues/{vhost_encoded}/{queue_name}"
 
+        try:
+            response = requests.get(url, auth=self._http_auth, timeout=timeout)
+            response.raise_for_status()
+        except requests.RequestException as e:
+            raise RuntimeError(f"RabbitMQ HTTP API request error: {e}")
+
+        return response.json()
+
+    def peek_queue_messages(self, queue_name: str, count: int = 5, timeout: float = 5.0) -> list[dict]:
+        vhost_encoded = requests.utils.quote(self._params.virtual_host, safe='')
+        url = f"{self._api_url}/queues/{vhost_encoded}/{queue_name}/get"
+        payload = {
+            "count": count,
+            "ackmode": "ack_requeue_true",
+            "encoding": "auto",
+            "truncate": 50000
+        }
+        try:
+            response = requests.post(
+                url,
+                json=payload,
+                auth=self._http_auth,
+                timeout=timeout
+            )
+            response.raise_for_status()
+        except requests.RequestException as e:
+            raise RuntimeError(f"RabbitMQ HTTP API request error: {e}")
+        return response.json()
