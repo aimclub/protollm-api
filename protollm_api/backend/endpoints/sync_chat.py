@@ -7,7 +7,7 @@ from protollm_api.backend.bll.services.generate import GenerateService
 from protollm_api.backend.broker import send_task, logger, get_result
 from protollm_api.backend.config import Config
 from protollm_api.backend.models.job_context_models import ResponseModel, ChatCompletionTransactionModel, PromptModel, \
-    ChatCompletionModel, PromptTypes, QueuesNamesResponse, QueueInfoResponse, PeekMessagesResponse
+    ChatCompletionModel, PromptTypes, QueuesNamesResponse, QueueInfoResponse, PeekMessagesResponse, QueueMessageInfoResponse
 from protollm_api.object_interface.message_queue.rabbitmq_adapter import RabbitMQQueue
 from protollm_api.object_interface.result_storage import RedisResultStorage
 
@@ -77,6 +77,21 @@ def get_sync_chat_router(config: Config, redis_db: RedisResultStorage, rabbitmq:
             messages = rabbitmq.peek_queue_messages(queue_name=queue_name, count=count)
             model = PeekMessagesResponse(messages=messages)
             return model.dict(include=model.__fields__.keys())
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=str(e))
+
+    @router.get("/queue_message_position/{queue_name}/{job_id}", response_model=QueueMessageInfoResponse, response_model_exclude_unset=True)
+    def get_message_position(queue_name: str, job_id: str, batch_size: Optional[int] = Query(100, ge=1, le=10000)):
+        try:
+            result = rabbitmq.get_message_position_by_id(
+                queue_name=queue_name,
+                job_id=job_id,
+                batch_size=batch_size
+            )
+            model = QueueMessageInfoResponse(**result)
+            return model.dict(include=model.__fields__.keys())
+        except ValueError as ve:
+            raise HTTPException(status_code=404, detail=str(ve))
         except Exception as e:
             raise HTTPException(status_code=500, detail=str(e))
 

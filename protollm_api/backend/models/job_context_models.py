@@ -86,12 +86,15 @@ class ToEmbed(BaseModel):
     inputs: str
     truncate: bool
 
+
 class TextEmbedderResponse(BaseModel):
     embeddings: list[float]
+
 
 class QueuesNamesResponse(BaseModel):
     queues_names: list[str]
     error: Optional[str] = Field(default=None, description="Error message, if any")
+
 
 class QueueInfoResponse(BaseModel):
     name: str = Field(..., description="Queue name")
@@ -105,15 +108,19 @@ class QueueInfoResponse(BaseModel):
     consumers: int = Field(..., description="Number of consumers currently subscribed to the queue")
     state: str = Field(..., description="Current state of the queue (e.g., running)")
     memory: Optional[int] = Field(None, description="Memory used by the queue (in bytes)")
-    consumer_utilisation: Optional[float] = Field(None, description="Fraction of time the queue is being actively consumed")
+    consumer_utilisation: Optional[float] = Field(None,
+                                                  description="Fraction of time the queue is being actively consumed")
     idle_since: Optional[str] = Field(None, description="Timestamp when the queue became idle (ISO format)")
+
     class Config:
         extra = "allow"
+
 
 class SimplifiedMessageProperties(BaseModel):
     content_type: Optional[str] = Field(None, description="MIME type of the message payload")
     message_id: Optional[str] = Field(None, description="Optional identifier of the message")
     timestamp: Optional[int] = Field(None, description="UNIX timestamp when the message was published")
+
 
 class SimplifiedRabbitMQMessage(BaseModel):
     payload: Any = Field(..., description="Raw content of the message")
@@ -122,5 +129,12 @@ class SimplifiedRabbitMQMessage(BaseModel):
     routing_key: str = Field(..., description="Routing key used to deliver the message")
     properties: SimplifiedMessageProperties = Field(..., description="Selected AMQP properties of the message")
 
+
 class PeekMessagesResponse(BaseModel):
     messages: list[SimplifiedRabbitMQMessage] = Field(..., description="List of peeked messages")
+
+
+class QueueMessageInfoResponse(BaseModel):
+    job_id: str
+    text: Optional[str]
+    position: int

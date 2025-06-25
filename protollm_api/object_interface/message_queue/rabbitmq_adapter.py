@@ -271,3 +271,50 @@ class RabbitMQQueue(BaseMessageQueue):  # noqa: WPS230
         except requests.RequestException as e:
             raise RuntimeError(f"RabbitMQ HTTP API request error: {e}")
         return response.json()
+
+    def get_message_position_by_id(self, queue_name: str, job_id: str, batch_size: int = 100, timeout: float = 5.0) -> dict:
+        position = 0
+        while True:
+            try:
+                messages = self.peek_queue_messages(queue_name=queue_name, count=batch_size, timeout=timeout)
+            except Exception as e:
+                raise RuntimeError(f"Error during message peek: {e}")
+            if not messages:
+                break
+            for index, raw_msg in enumerate(messages):
+                raw_payload = raw_msg.get("payload")
+                if isinstance(raw_payload, str):
+                    try:
+                        payload = json.loads(raw_payload)
+                    except json.JSONDecodeError:
+                        continue
+                else:
+                    payload = raw_payload
+                if not isinstance(payload, dict):
+                    continue
+                nested_job_id = (
+                    payload.get("kwargs", {})
+                    .get("prompt", {})
+                    .get("job_id")
+                )
+                if str(nested_job_id) == str(job_id):
+                    prompt_messages = (
+                        payload.get("kwargs", {})
+                        .get("prompt", {})
+                        .get("messages", [])
+                    )
+                    text = None
+                    if prompt_messages and isinstance(prompt_messages, list):
+                        first_msg = prompt_messages[0]
+                        if isinstance(first_msg, dict):
+                            text = first_msg.get("content")
+                    return {
+                        "job_id": nested_job_id,
+                        "text": text,
+                        "position": position + index
+                    }
+            position += len(messages)
+            if len(messages) < batch_size:
+                break
+        raise ValueError(f"Message with job_id={job_id} not found in queue {queue_name}")
+
