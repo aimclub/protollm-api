@@ -3,7 +3,7 @@ from typing import Optional
 
 from pydantic import BaseModel, Field
 
-from protollm_api.models.utils import current_time
+from protollm_api.utils.utils import current_time
 
 
 class JobStatusType(Enum):
