@@ -23,6 +23,7 @@ async def send_task(config: Config,
         queue_name (str): Name of the RabbitMQ queue where the task will be published.
         transaction (PromptTransactionModel | ChatCompletionTransactionModel): Transaction data to be sent.
         rabbitmq (RabbitMQQueue): Rabbit wrapper object to interact with the Rabbit queue.
+        redis_db (RedisResultStorage): Redis wrapper object to interact with the Redis database.
         task_type (str, optional): The type of task to be executed (default is 'generate').
 
     Raises:
