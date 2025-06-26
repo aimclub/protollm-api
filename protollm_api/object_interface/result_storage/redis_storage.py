@@ -4,7 +4,7 @@ from typing import Optional, Iterable
 
 import redis
 
-from protollm_api.models.utils import current_time
+from protollm_api.utils.utils import current_time
 from protollm_api.object_interface.result_storage.base import ResultStorage
 from protollm_api.object_interface.result_storage.models import (JobStatusType, JobStatusError, \
     JobStatus)
