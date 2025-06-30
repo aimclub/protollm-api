@@ -55,7 +55,7 @@ class LLMWrap:
         """
         self.rabbitMQ.connect()
         self.rabbitMQ.declare_queue(self.queue_name, max_priority=5)
-        self.rabbitMQ.consume(self.queue_name, callback=self._callback)
+        self.rabbitMQ.consume(self.queue_name, self._callback, auto_ack=False)
         logger.info('Started consuming messages')
 
     def _dump_from_body(self, message_body) -> PromptModel | ChatCompletionModel:
