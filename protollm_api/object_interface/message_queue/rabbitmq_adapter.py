@@ -144,6 +144,25 @@ class RabbitMQQueue(BaseMessageQueue):  # noqa: WPS230
             priority=getattr(props, "priority", None),
         )
 
+    def get_simple(self, queue, auto_ack=False):
+        result = self._channel.basic_get(queue=queue, auto_ack=auto_ack)
+        if result:
+            # pika 1.x: (method, header, body) – method=None when queue empty
+            if isinstance(result, tuple):
+                method = result[0]
+                if method is not None:
+                    return self._translate_message(*result)
+            else:  # some custom adapter could return object
+                method = result.method_frame  # type: ignore[attr-defined]
+                if method is not None:
+                    return self._translate_message(
+                        method,
+                        result.properties,  # type: ignore[attr-defined]
+                        result.body,  # type: ignore[attr-defined]
+                    )
+        return None
+
+
     def get(  # noqa: D401, WPS211
         self,
         queue: str,
@@ -156,21 +175,9 @@ class RabbitMQQueue(BaseMessageQueue):  # noqa: WPS230
         assert self._channel, "connect() must be called first"
         start = time.monotonic()
         while True:
-            result = self._channel.basic_get(queue=queue, auto_ack=auto_ack)
+            result = self.get_simple(queue, auto_ack)
             if result:
-                # pika 1.x: (method, header, body) – method=None when queue empty
-                if isinstance(result, tuple):
-                    method = result[0]
-                    if method is not None:
-                        return self._translate_message(*result)
-                else:  # some custom adapter could return object
-                    method = result.method_frame  # type: ignore[attr-defined]
-                    if method is not None:
-                        return self._translate_message(
-                            method,
-                            result.properties,  # type: ignore[attr-defined]
-                            result.body,  # type: ignore[attr-defined]
-                        )
+                return result
             # No task yet
             if timeout is not None and (time.monotonic() - start) >= timeout:
                 return None
