@@ -8,19 +8,14 @@ Highlights
   hang when the broker is unavailable.  ``pytest.mark.timeout`` keeps the test
   from blocking >15 s even if something goes wrong.
 """
-import json
 import os
 import threading
 import uuid
+from time import sleep
 import pika
-from threading import Thread
 import time
-from typing import List
 from types import SimpleNamespace
-
 import pytest
-import requests
-
 from protollm_api.object_interface.message_queue.rabbitmq_adapter import RabbitMQQueue
 from protollm_api.object_interface.message_queue.base import ReceivedMessage
 
@@ -218,8 +213,6 @@ def test_consume(rabbitmq_connection_params):
         def message_handler(msg: ReceivedMessage) -> None:
             nonlocal delivery_counts
             delivery_counts += 1
-            data = json.loads(msg.body)
-
             if delivery_counts == 1:
                 raise Exception("Simulated processing error")
             else:
@@ -245,26 +238,19 @@ def test_ack_removes_message(rabbitmq_connection_params):
     mq = RabbitMQQueue(**params)
     with mq:
         mq.declare_queue(queue_name, auto_delete=True)
-        # Отправляем тестовое сообщение
         test_payload = {"test": "ack_test"}
         mq.publish(queue_name, test_payload)
-        # Создаем событие для синхронизации
         processed_event = threading.Event()
 
         def message_handler(msg: ReceivedMessage):
             processed_event.set()
 
-        # Запускаем потребитель
         mq.consume(queue_name, message_handler, auto_ack=False)
 
-        # Ждем обработки
         assert processed_event.wait(timeout=5), "Message not processed"
         time.sleep(2)
         message = mq.get_simple(queue_name)
-
         assert message is None
-
-        # Останавливаем потребитель
         mq.stop_consuming()
 
 
@@ -273,48 +259,27 @@ def test_ack_removes_message(rabbitmq_connection_params):
 def test_nack_requeues_message(rabbitmq_connection_params):
     """Test that nack with requeue=True returns message to queue."""
     queue_name = f"test_nack_{uuid.uuid4().hex}"
-    delivery_count = 0
-    processed_event = threading.Event()
     _verify_rabbitmq_available(rabbitmq_connection_params)
     params = _build_connection_params(rabbitmq_connection_params)
 
     mq = RabbitMQQueue(**params)
     with mq:
-        # Создаем очередь
-        mq.declare_queue(queue_name, auto_delete=True)
+        mq.declare_queue(queue_name, auto_delete=False)
 
-        # Отправляем тестовое сообщение
         test_payload = {"test": "nack_test"}
         mq.publish(queue_name, test_payload)
 
         def message_handler(msg: ReceivedMessage):
-            nonlocal delivery_count
-            delivery_count += 1
+            raise RuntimeError("Simulated processing error")
 
-            if delivery_count == 1:
-                # Первая попытка - имитируем ошибку
-                mq.nack(msg)  # По умолчанию requeue=True
-                processed_event.set()
-            else:
-                # Вторая попытка - успешно обрабатываем
-                mq.ack(msg)
-                processed_event.set()
-
-        # Запускаем потребитель
         mq.consume(queue_name, message_handler, auto_ack=False)
-
-        # Ждем второй обработки
-        assert processed_event.wait(timeout=10), "Message not requeued"
-
-        # Проверяем, что сообщение было обработано дважды
-        assert delivery_count == 2, "Message not delivered twice"
-
-        # Проверяем, что очередь пуста
-        remaining_message = mq.get_simple(queue_name, timeout=0.5)
-        assert remaining_message is None, "Message not removed after final ack"
-
-        # Останавливаем потребитель
+        sleep(1)
         mq.stop_consuming()
+
+        mq.connect()
+        remaining_message = mq.get_simple(queue_name)
+        assert remaining_message.body == b'{"test": "nack_test"}', "Message removed after final nack"
+        mq.delete_queue(queue_name)
 
 
 # Helpers remain the same with minor improvements

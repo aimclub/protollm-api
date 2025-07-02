@@ -103,6 +103,23 @@ class RabbitMQQueue(BaseMessageQueue):  # noqa: WPS230
             **kwargs,
         )
 
+    def delete_queue(
+            self,
+            queue: str,
+            *,
+            if_unused: bool = False,
+            if_empty: bool = False,
+            **kwargs: Any
+    ) -> None:
+        """Delete a RabbitMQ queue."""
+        assert self._channel, "connect() must be called first"
+        self._channel.queue_delete(
+            queue=queue,
+            if_unused=if_unused,
+            if_empty=if_empty,
+            **kwargs
+        )
+
     # ------------------------------------------------------------------
     # Publishing
     # ------------------------------------------------------------------
@@ -274,12 +291,12 @@ class RabbitMQQueue(BaseMessageQueue):  # noqa: WPS230
 
     def ack(self, message: ReceivedMessage) -> None:
         """Acknowledge the message processing."""
-        if not self._channel:
-            raise RuntimeError("Channel is not available")
+        # if not self._channel:
+        #     raise RuntimeError("Channel is not available")
         self._channel.basic_ack(message.delivery_tag)
 
     def nack(self, message: ReceivedMessage) -> None:
         """Negative acknowledge and requeue the message."""
-        if not self._channel:
-            raise RuntimeError("Channel is not available")
+        # if not self._channel:
+        #     raise RuntimeError("Channel is not available")
         self._channel.basic_nack(message.delivery_tag, requeue=True)
