@@ -34,7 +34,7 @@ async def test_get_result(test_local_config):
 
     response = await get_result(test_local_config, task_id, redis_mock)
 
-    redis_mock.wait_item.assert_called_once_with(f"{test_local_config.redis_prefix}:{task_id}", timeout=90)
+    redis_mock.wait_item.assert_called_once_with(f"{test_local_config.redis_prefix_for_status}:{task_id}", timeout=90)
     assert response == ResponseModel(content="return test success")
 
 

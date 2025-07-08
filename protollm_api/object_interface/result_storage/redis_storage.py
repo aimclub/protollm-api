@@ -4,6 +4,7 @@ from typing import Optional, Iterable
 
 import redis
 
+from protollm_api.backend.models.job_context_models import ChatCompletionModel
 from protollm_api.utils.utils import current_time
 from protollm_api.object_interface.result_storage.base import ResultStorage
 from protollm_api.object_interface.result_storage.models import (JobStatusType, JobStatusError, \
@@ -21,7 +22,8 @@ class RedisResultStorage(ResultStorage):
             self,
             redis_client: Optional[redis.Redis] = None,
             redis_host: Optional[str] = 'localhost',
-            redis_port: Optional[str | int] = 6379
+            redis_port: Optional[str | int] = 6379,
+
     ):
         """Initialize RedisResultStorage.
         If redis_client is not provided, a new Redis client will be created,
@@ -41,16 +43,25 @@ class RedisResultStorage(ResultStorage):
             self.url = self._redis.connection_pool.connection_kwargs.get('url', f"redis://{redis_host}:{redis_port}/0")
         self.logger = logging.getLogger(self.__class__.__name__)
 
-    def create_job_status(self, job_id: str) -> None:
+    def create_job_status(self,
+                          job_id: str,
+                          prompt: ChatCompletionModel,
+                          status_prefix: str = "",
+                          prompt_prefix: str = ""
+                          ) -> None:
         """Create a new job entry in Redis with pending status.
 
         Args:
             job_id (str): Unique identifier for the job.
+            prompt (str) : Prompt for the job.
+            status_prefix (str) : prefix for status in Redis.
+            prompt_prefix (str) : prefix for prompt in Redis.
         """
         try:
             # Initialize job result with PENDING status
             job_status = JobStatus(status=JobStatusType.PENDING, status_message="Job is created")
-            self.__save_job_status(job_id, job_status)
+            self.__save_job_status(status_prefix + job_id, job_status)
+            self.__save_job_prompt(prompt_prefix + job_id, prompt)
             self.logger.info(f"Job {job_id} created with pending status.")
         except Exception as ex:
             self.logger.error(f"Failed to create job {job_id}. Error: {ex}")
@@ -79,6 +90,15 @@ class RedisResultStorage(ResultStorage):
         """
         self._redis.set(job_id, job.model_dump_json())
         self._redis.publish(job_id, 'set')
+
+    def __save_job_prompt(self, job_id: str, prompt: ChatCompletionModel) -> None:
+        """Save job prompt to Redis.
+
+        Args:
+            job_id (str): Unique identifier for the job.
+            prompt (ChatCompletionModel): The job prompt object.
+        """
+        self._redis.set(job_id, prompt.model_dump_json())
 
     def __update_job_status(
             self,

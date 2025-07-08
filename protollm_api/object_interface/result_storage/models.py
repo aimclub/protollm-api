@@ -70,3 +70,5 @@ class JobStatus(BaseModel):
         description="Result of the job, if completed successfully. Format: JSON string"
     )
     error: Optional[JobStatusError] = Field(default=None, description="Error message, if any")
+
+

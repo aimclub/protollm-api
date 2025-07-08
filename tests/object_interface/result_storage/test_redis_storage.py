@@ -4,6 +4,7 @@ import uuid
 
 import pytest
 
+from protollm_api.backend.models.job_context_models import ChatCompletionModel
 from protollm_api.object_interface.result_storage.models import (
     JobStatusError,
     JobStatusErrorType,
@@ -20,12 +21,19 @@ def storage(redis_client):
     """Fresh RedisResultStorage for each test."""
     return RedisResultStorage(redis_client=redis_client)
 
+# TODO update tests with prompt
+@pytest.fixture
+def prompt():
+    prompt = ChatCompletionModel()
+    return  prompt
+
 
 # --------------------------------------------------------------------------- #
 #  Basic operations                                                            #
 # --------------------------------------------------------------------------- #
 
-def test_create_and_get(storage):
+def test_create_and_get(storage ,prompt):
+    print(prompt)
     job_id = f"job-{uuid.uuid4()}"
     storage.create_job_status(job_id)
 
