@@ -8,7 +8,7 @@ from protollm_api.backend.models.job_context_models import ChatCompletionModel
 from protollm_api.utils.utils import current_time
 from protollm_api.object_interface.result_storage.base import ResultStorage
 from protollm_api.object_interface.result_storage.models import (JobStatusType, JobStatusError, \
-    JobStatus)
+                                                                 JobStatus, JobResult)
 
 
 class RedisResultStorage(ResultStorage):
@@ -68,18 +68,32 @@ class RedisResultStorage(ResultStorage):
             raise ex
 
     def __load_job_status(self, job_id: str) -> JobStatus:
+        """Load job status from Redis.
+
+        Args:
+            job_id (str): Unique identifier for the job.
+
+        Returns:
+            JobStatus: The job status object.
+        """
+        data = self._redis.get(job_id)
+        if data is None:
+            raise Exception(f"Job {job_id} not found in Redis.")
+        return JobStatus.model_validate_json(data)
+
+    def __load_job_result(self, job_id: str) -> JobResult:
         """Load job result from Redis.
 
         Args:
             job_id (str): Unique identifier for the job.
 
         Returns:
-            JobStatus: The job result object.
+            JobResult: The job result object.
         """
         data = self._redis.get(job_id)
         if data is None:
             raise Exception(f"Job {job_id} not found in Redis.")
-        return JobStatus.model_validate_json(data)
+        return JobResult.model_validate_json(data)
 
     def __save_job_status(self, job_id: str, job: JobStatus) -> None:
         """Save job result to Redis.
@@ -100,12 +114,20 @@ class RedisResultStorage(ResultStorage):
         """
         self._redis.set(job_id, prompt.model_dump_json())
 
+    def __save_job_result(self, job_id: str, result: JobResult) -> None:
+        """Save job result to Redis.
+
+        Args:
+            job_id (str): Unique identifier for the job.
+            result (ChatCompletionModel): The job prompt object.
+        """
+        self._redis.set(job_id, result.model_dump_json())
+
     def __update_job_status(
             self,
             job_id: str,
             status: JobStatusType,
             status_message: Optional[str] = None,
-            result: Optional[str] = None,
             error: Optional[JobStatusError] = None,
             is_completed: Optional[bool] = False
     ) -> None:
@@ -123,7 +145,6 @@ class RedisResultStorage(ResultStorage):
         job.status = status
         job.status_message = status_message
         job.last_update = current_time()
-        job.result = result
         job.error = error
         job.is_completed = is_completed
         self.__save_job_status(job_id, job)
@@ -192,7 +213,9 @@ class RedisResultStorage(ResultStorage):
             job_id: str,
             result: Optional[str] = None,
             error: Optional[JobStatusError] = None,
-            status_message: Optional[str] = None
+            status_message: Optional[str] = None,
+            status_prefix: str = "",
+            result_prefix: str = ""
     ) -> None:
         """Complete the job by setting its result or error.
 
@@ -201,10 +224,14 @@ class RedisResultStorage(ResultStorage):
             result (Optional[T]): The result of the job if completed successfully.
             error (Optional[JobStatusError]): The error if the job failed.
             status_message (Optional[str]): Optional status message.
+            status_prefix (str) : prefix for status in Redis.
+            result_prefix (str) : prefix for result in Redis.
         """
         try:
             status = JobStatusType.COMPLETED if error is None else JobStatusType.ERROR
-            self.__update_job_status(job_id, status, status_message, result, error, is_completed=True)
+            self.__update_job_status(status_prefix + job_id, status, status_message, error, is_completed=True)
+            if status == JobStatusType.COMPLETED:
+                self.__save_job_result(result_prefix + job_id, JobResult(result= result))
             self.logger.info(f"Job {job_id} completed with status {status.value}.")
         except Exception as ex:
             self.logger.error(f"Failed to complete job {job_id}. Error: {ex}")
@@ -225,6 +252,23 @@ class RedisResultStorage(ResultStorage):
             return job
         except Exception as ex:
             self.logger.error(f"Failed to get job {job_id} status. Error: {ex}")
+            raise ex
+
+    def get_job_result(self, job_id: str) -> JobResult:
+        """Get the result of a job.
+
+        Args:
+            job_id (str): Unique identifier for the job.
+
+        Returns:
+            JobResult: The job result object.
+        """
+        try:
+            job = self.__load_job_result(job_id)
+            self.logger.info(f"Job {job_id} result retrieved: {job.result}.")
+            return job
+        except Exception as ex:
+            self.logger.error(f"Failed to get job {job_id} result. Error: {ex}")
             raise ex
 
     def delete_job_status(self, job_id: str) -> None:

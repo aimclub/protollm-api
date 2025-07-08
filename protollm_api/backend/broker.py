@@ -1,6 +1,7 @@
 import logging
 from lib2to3.fixes.fix_input import context
 
+from celery.bin.result import result
 from click import prompt
 
 from protollm_api.object_interface.message_queue.rabbitmq_adapter import RabbitMQQueue
@@ -83,7 +84,8 @@ async def get_result(config: Config, task_id: str, redis_db: RedisResultStorage)
     except Exception as e:
         return ResponseModel(content=f"Job waiting finish with Error:\n{str(e)}")
     if job_status.status == JobStatusType.COMPLETED:
-        return ResponseModel(content= job_status.result)
+        job_result = redis_db.get_job_result(f"{config.redis_prefix_for_answer}:{task_id}")
+        return ResponseModel(content= job_result.result)
     if job_status.status == JobStatusType.ERROR:
         return ResponseModel(content=str(job_status.error))
     return ResponseModel(content="Somthing goes wrong and job do not finished")
