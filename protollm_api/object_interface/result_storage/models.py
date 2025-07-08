@@ -49,11 +49,10 @@ class JobStatusError(BaseModel):
 
 class JobStatus(BaseModel):
     """
-    Class for job result in Redis
+    Class for job status in Redis
     Attributes:
         status: Status of the job
         status_message: Status message, e.g. "Job written to RabbitMQ"; "Job running on worker"
-        result: Result of the job, if completed successfully
         error: Error if any
     """
     status: JobStatusType = Field(default=JobStatusType.PENDING, examples=[
@@ -65,10 +64,16 @@ class JobStatus(BaseModel):
     last_update: Optional[str] = Field(default_factory=current_time, description="Last update timestamp")
     status_message: Optional[str] = Field(default=None, description="Status message")
     is_completed: bool = Field(default=False, description="Indicator of job completion")
+    error: Optional[JobStatusError] = Field(default=None, description="Error message, if any")
+
+
+class JobResult(BaseModel):
+    """
+    Class for job result in Redis
+    Attributes:
+        result: Result of the job, if completed successfully
+    """
     result: Optional[str] = Field(
         default=None,
         description="Result of the job, if completed successfully. Format: JSON string"
     )
-    error: Optional[JobStatusError] = Field(default=None, description="Error message, if any")
-
-
