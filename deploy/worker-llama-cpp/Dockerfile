@@ -8,10 +8,10 @@ RUN apt install git -y
 RUN apt install build-essential -y
 RUN apt install gcc-11 g++-11 -y
 
-COPY requirements.txt ./requirements.txt
+COPY ../../temp/llm-worker/requirements.txt ./requirements.txt
 
 RUN pip install -r requirements.txt
 
-COPY . .
+COPY ../../temp/llm-worker .
 
 CMD python3 main.py
