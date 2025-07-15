@@ -1,0 +1,95 @@
+version: '3.5'
+
+services:
+  api:
+    container_name: protollm-api
+    image: protollm/api:backend
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - ${API_PORT}:6672
+    env_file:
+      - example.env
+    volumes:
+      - ./unit_config.json:/docker-entrypoint.d/unit_config.json
+    networks:
+      - protollm-network
+    depends_on:
+      - rabbitmq
+      - reddis
+
+  rabbitmq:
+    image: "rabbitmq:3-management"
+    ports:
+      - ${RABBIT_MQ_PORT}:5672
+      - ${WEB_RABBIT_MQ}:15672
+    env_file:
+      - example.env
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    networks:
+      - protollm-network
+
+  redis:
+    image: "redis:alpine"
+    ports:
+      - ${REDIS_PORT}:6379
+    volumes:
+      - redis_data:/var/lib/data
+    networks:
+      - protollm-network
+
+  worker-api:
+    container_name: protollm-worker-api
+    image: protollm/worker:api
+    #    runtime: nvidia
+    #    deploy:
+    #      resources:
+    #        limits:
+    #          # cpus: 5
+    #          memory: 100G
+    build:
+      context: .
+      dockerfile: Dockerfile
+    env_file: example.env
+    #    volumes:
+    #      - <your_path_to_data_in_docker>:/data
+    ports:
+      - ${LLM_WORKER_PORT}:8672
+    networks:
+      - protollm-network
+    restart: unless-stopped
+    environment:
+      - PYTHONPATH=/app
+    command: ["python", "protollm_api/worker/main.py"]
+
+  worker-llama-cpp:
+    container_name: protollm-worker-llama-cpp
+    image: protollm/worker:llama-cpp
+    #    runtime: nvidia
+    #    deploy:
+    #      resources:
+    #        limits:
+    #          # cpus: 5
+    #          memory: 100G
+    build:
+      context: .
+      dockerfile: deploy/worker-llama-cpp/Dockerfile
+    env_file: .env
+    #    volumes:
+    #      - <your_path_to_data_in_docker>:/data
+    ports:
+      - ${LLM_WORKER_PORT}:8672
+    networks:
+      - protollm-network
+    restart: unless-stopped
+
+networks:
+  protollm-network:
+    name: protollm-network
+    driver: bridge
+
+volumes:
+  rabbitmq_data:
+  redis_data:
