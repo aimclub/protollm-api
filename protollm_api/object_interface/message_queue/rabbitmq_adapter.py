@@ -52,6 +52,8 @@ class RabbitMQQueue(BaseMessageQueue):  # noqa: WPS230
         self._connection: BlockingConnection | None = None
         self._channel: pika.channel.Channel | None = None
         self._consumer_tags: list[str] = []
+        self._active = threading.Event()
+        self._consumer_tag = None
         self._consume_thread: threading.Thread | None = None
 
     # ------------------------------------------------------------------
@@ -65,13 +67,11 @@ class RabbitMQQueue(BaseMessageQueue):  # noqa: WPS230
         self._channel = self._connection.channel()
 
     def close(self) -> None:  # noqa: D401
+        self.stop_consuming()
+
         if not self._connection:
             return
-        for tag in self._consumer_tags:
-            try:
-                self._channel.basic_cancel(tag)
-            except Exception:  # noqa: BLE001
-                log.exception("Failed to cancel consumer %s", tag)
+
         if self._channel and self._channel.is_open:
             self._channel.close()
         if self._connection.is_open:
@@ -101,6 +101,23 @@ class RabbitMQQueue(BaseMessageQueue):  # noqa: WPS230
             auto_delete=auto_delete,
             arguments=arguments,
             **kwargs,
+        )
+
+    def delete_queue(
+            self,
+            queue: str,
+            *,
+            if_unused: bool = False,
+            if_empty: bool = False,
+            **kwargs: Any
+    ) -> None:
+        """Delete a RabbitMQ queue."""
+        assert self._channel, "connect() must be called first"
+        self._channel.queue_delete(
+            queue=queue,
+            if_unused=if_unused,
+            if_empty=if_empty,
+            **kwargs
         )
 
     # ------------------------------------------------------------------
@@ -144,6 +161,25 @@ class RabbitMQQueue(BaseMessageQueue):  # noqa: WPS230
             priority=getattr(props, "priority", None),
         )
 
+    def get_simple(self, queue, auto_ack=False):
+        result = self._channel.basic_get(queue=queue, auto_ack=auto_ack)
+        if result:
+            # pika 1.x: (method, header, body) – method=None when queue empty
+            if isinstance(result, tuple):
+                method = result[0]
+                if method is not None:
+                    return self._translate_message(*result)
+            else:  # some custom adapter could return object
+                method = result.method_frame  # type: ignore[attr-defined]
+                if method is not None:
+                    return self._translate_message(
+                        method,
+                        result.properties,  # type: ignore[attr-defined]
+                        result.body,  # type: ignore[attr-defined]
+                    )
+        return None
+
+
     def get(  # noqa: D401, WPS211
         self,
         queue: str,
@@ -156,66 +192,111 @@ class RabbitMQQueue(BaseMessageQueue):  # noqa: WPS230
         assert self._channel, "connect() must be called first"
         start = time.monotonic()
         while True:
-            result = self._channel.basic_get(queue=queue, auto_ack=auto_ack)
+            result = self.get_simple(queue, auto_ack)
             if result:
-                # pika 1.x: (method, header, body) – method=None when queue empty
-                if isinstance(result, tuple):
-                    method = result[0]
-                    if method is not None:
-                        return self._translate_message(*result)
-                else:  # some custom adapter could return object
-                    method = result.method_frame  # type: ignore[attr-defined]
-                    if method is not None:
-                        return self._translate_message(
-                            method,
-                            result.properties,  # type: ignore[attr-defined]
-                            result.body,  # type: ignore[attr-defined]
-                        )
+                return result
             # No task yet
             if timeout is not None and (time.monotonic() - start) >= timeout:
                 return None
             time.sleep(0.1)
 
-    def consume(  # noqa: D401, WPS211
-        self,
-        queue: str,
-        callback: Callable[[ReceivedMessage], None],
-        *,
-        auto_ack: bool = False,
-        prefetch: int = 1,
-        **kwargs: Any,
+    # Добавляем в класс RabbitMQQueue следующие методы:
+    def consume(
+            self,
+            queue: str,
+            callback: Callable[[ReceivedMessage], Any],
+            *,
+            auto_ack: bool = False,
+            **kwargs: Any,
     ) -> None:
-        assert self._channel, "connect() must be called first"
-        self._channel.basic_qos(prefetch_count=prefetch)
+        """Start consuming messages from queue in background thread."""
+        if self._active.is_set():
+            raise RuntimeError("Consumer is already running")
 
-        def _on_message(ch, method, props, body):  # noqa: D401, N802
-            msg = self._translate_message(method, props, body)
-            callback(msg)
-            if auto_ack is False:
-                # Application must ack/nack explicitly
-                pass
+        self.connect()
+        self._active.set()
 
-        tag = self._channel.basic_consume(queue=queue, on_message_callback=_on_message, auto_ack=auto_ack)
-        self._consumer_tags.append(tag)
-
-        def _start_consuming():  # noqa: D401
-            try:
-                self._channel.start_consuming()
-            except KeyboardInterrupt:
-                pass
-
-        self._consume_thread = threading.Thread(target=_start_consuming, daemon=True)
+        # Создаем поток для обработки сообщений
+        self._consume_thread = threading.Thread(
+            target=self._consume_loop,
+            args=(queue, callback, auto_ack),
+            daemon=False,
+            name=f"RabbitMQConsumer-{queue}",
+        )
         self._consume_thread.start()
-        self._consume_thread.join()
 
-    # ------------------------------------------------------------------
-    # Ack / nack
-    # ------------------------------------------------------------------
-    def ack(self, delivery_tag: Any) -> None:  # noqa: D401
-        assert self._channel, "connect() must be called first"
-        self._channel.basic_ack(delivery_tag=delivery_tag)
+    def wait(self, timeout: float | None = None) -> None:
+        """Wait for consumer to finish."""
+        if self._consume_thread:
+            self._consume_thread.join(timeout=timeout)
 
-    def nack(self, delivery_tag: Any, *, requeue: bool = True) -> None:  # noqa: D401
-        assert self._channel, "connect() must be called first"
-        self._channel.basic_nack(delivery_tag=delivery_tag, requeue=requeue)
+    def _consume_loop(
+            self,
+            queue: str,
+            callback: Callable[[ReceivedMessage], Any],
+            auto_ack: bool,
+    ) -> None:
+        """Main loop for message consumption."""
+        try:
+            def message_handler(ch, method, properties, body):
+                msg = self._translate_message(method, properties, body)
+                try:
+                    callback(msg)
+                    if not auto_ack:
+                        self.ack(msg)  # Используем публичный метод
+                except Exception as e:
+                    log.exception("Message processing failed: %s", e)
+                    if not auto_ack:
+                        self.nack(msg)  # Используем публичный метод
 
+            consumer_tag = self._channel.basic_consume(
+                queue=queue,
+                on_message_callback=message_handler,
+                auto_ack=auto_ack,
+            )
+            self._consumer_tag = consumer_tag
+            log.info("Started consuming queue '%s'", queue)
+
+            while self._active.is_set():
+                self._connection.process_data_events(time_limit=1.0)
+
+        except Exception as e:
+            log.exception("Consumer loop crashed: %s", e)
+        finally:
+            self.stop_consuming()
+
+    def stop_consuming(self) -> None:
+        """Stop message consumption and background thread."""
+        if not self._active.is_set():
+            return
+
+        self._active.clear()
+
+        # Отменяем подписку
+        if self._channel and self._consumer_tag:
+            try:
+                self._channel.basic_cancel(self._consumer_tag)
+                log.debug("Canceled consumer %s", self._consumer_tag)
+            except Exception as e:
+                log.exception("Error canceling consumer: %s", e)
+            finally:
+                self._consumer_tag = None
+
+        # Ожидаем завершение потока
+        if self._consume_thread and self._consume_thread.is_alive():
+            self._consume_thread.join(timeout=5.0)
+            if self._consume_thread.is_alive():
+                log.warning("Consumer thread did not terminate gracefully")
+            self._consume_thread = None
+
+    def ack(self, message: ReceivedMessage) -> None:
+        """Acknowledge the message processing."""
+        # if not self._channel:
+        #     raise RuntimeError("Channel is not available")
+        self._channel.basic_ack(message.delivery_tag)
+
+    def nack(self, message: ReceivedMessage) -> None:
+        """Negative acknowledge and requeue the message."""
+        # if not self._channel:
+        #     raise RuntimeError("Channel is not available")
+        self._channel.basic_nack(message.delivery_tag, requeue=True)

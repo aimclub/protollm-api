@@ -8,13 +8,14 @@ Highlights
   hang when the broker is unavailable.  ``pytest.mark.timeout`` keeps the test
   from blocking >15 s even if something goes wrong.
 """
-
+import os
+import threading
 import uuid
+from time import sleep
+import pika
+import time
 from types import SimpleNamespace
-from unittest import mock
-
 import pytest
-
 from protollm_api.object_interface.message_queue.rabbitmq_adapter import RabbitMQQueue
 from protollm_api.object_interface.message_queue.base import ReceivedMessage
 
@@ -128,11 +129,11 @@ def test_declare_queue_sends_priority():  # noqa: D401
 def test_publish_passes_priority():  # noqa: D401
     mq = RabbitMQQueue(host="stub")
     mq.connect()
-    mq.publish("tasks", "hello", priority=4)
+    mq.publish("tasks", {"content": "hello"}, priority=4)
     fake_channel = mq._channel  # type: ignore[attr-defined]
     call = fake_channel.publish_calls[0]
     assert call["properties"].priority == 4  # type: ignore[attr-defined]
-    assert call["body"] == b"hello"
+    assert call["body"] == '{"content": "hello"}'
 
 
 def test_get_wraps_received_message():  # noqa: D401
@@ -154,60 +155,168 @@ def test_get_wraps_received_message():  # noqa: D401
 # ---------------------------------------------------------------------------
 #                        Integration tests (real RabbitMQ)
 # ---------------------------------------------------------------------------
-
+@pytest.fixture
+def rabbitmq_connection_params():
+    """Фикстура с параметрами подключения к RabbitMQ с поддержкой переменных окружения."""
+    return {
+        "host": os.getenv("TEST_RABBITMQ_HOST", "localhost"),
+        "port": int(os.getenv("TEST_RABBITMQ_PORT", "5672")),
+        "login": os.getenv("TEST_RABBITMQ_LOGIN", "admin"),
+        "password": os.getenv("TEST_RABBITMQ_PASSWORD", "admin"),
+    }
 
 @pytest.mark.integration
 @pytest.mark.timeout(15)
 def test_priority_ordering_rabbitmq(rabbitmq_connection_params):  # noqa: D401
     """Ensure high‑priority messages are delivered before low‑priority ones."""
 
-    # Pre‑flight probe to avoid hangs when RabbitMQ is unreachable
-    try:
-        import pika
+    _verify_rabbitmq_available(rabbitmq_connection_params)
 
-        creds = pika.PlainCredentials(
-            rabbitmq_connection_params["login"],
-            rabbitmq_connection_params["password"],
-        )
-        conn = pika.BlockingConnection(
-            pika.ConnectionParameters(
-                host=rabbitmq_connection_params["host"],
-                port=rabbitmq_connection_params["port"],
-                credentials=creds,
-                connection_attempts=1,
-                blocked_connection_timeout=3,
-                socket_timeout=3,
-            ),
-        )
-        conn.close()
-    except Exception:  # noqa: BLE001
-        pytest.skip("RabbitMQ is not available on localhost:5672 or wrong credentials")
-
-    # Adapter expects 'username' not 'login'
-    params = {
-        "host": rabbitmq_connection_params["host"],
-        "port": rabbitmq_connection_params["port"],
-        "username": rabbitmq_connection_params["login"],
-        "password": rabbitmq_connection_params["password"],
-        "blocked_connection_timeout": 3,
-        "heartbeat": 0,
-    }
+    params = _build_connection_params(rabbitmq_connection_params)
 
     queue_name = f"pytest_{uuid.uuid4().hex}"
 
     mq = RabbitMQQueue(**params)
     with mq:
         mq.declare_queue(queue_name, max_priority=10, auto_delete=True)
-        mq.publish(queue_name, "low", priority=1)
-        mq.publish(queue_name, "high", priority=9)
+        mq.publish(queue_name, {"content": "low"}, priority=1)
+        mq.publish(queue_name, {"content": "high"}, priority=9)
 
         first = mq.get(queue_name, auto_ack=True)
         second = mq.get(queue_name, auto_ack=True)
 
         assert first is not None and second is not None, "Messages not received"
-        assert first.body == b"high"
-        assert second.body == b"low"
+        assert first.body == b'{"content": "high"}'
+        assert second.body == b'{"content": "low"}'
 
 
+@pytest.mark.integration
+@pytest.mark.timeout(15)
+def test_consume(rabbitmq_connection_params):
+    """Test message re-queue on nack."""
+    _verify_rabbitmq_available(rabbitmq_connection_params)
 
+    queue_name = f"pytest_nack_{uuid.uuid4().hex}"
+    params = _build_connection_params(rabbitmq_connection_params)
+    delivery_counts = {}
+    processed_event = threading.Event()
+
+    mq = RabbitMQQueue(**params)
+    with mq:
+        mq.declare_queue(queue_name, auto_delete=True)
+
+        test_data = {"test": "nack_test"}
+        mq.publish(queue_name, test_data)
+
+        delivery_counts = 0
+
+        def message_handler(msg: ReceivedMessage) -> None:
+            nonlocal delivery_counts
+            delivery_counts += 1
+            if delivery_counts == 1:
+                raise Exception("Simulated processing error")
+            else:
+                processed_event.set()
+
+        mq.consume(queue_name, message_handler, auto_ack=False)
+
+        assert processed_event.wait(timeout=100), "Message was not requeued and reprocessed"
+
+        assert delivery_counts == 2
+
+        mq.stop_consuming()
+
+@pytest.mark.integration
+@pytest.mark.timeout(15)
+def test_ack_removes_message(rabbitmq_connection_params):
+    """Test that ack removes the message from the queue."""
+    _verify_rabbitmq_available(rabbitmq_connection_params)
+
+    queue_name = f"pytest_ack_{uuid.uuid4().hex}"
+    params = _build_connection_params(rabbitmq_connection_params)
+
+    mq = RabbitMQQueue(**params)
+    with mq:
+        mq.declare_queue(queue_name, auto_delete=True)
+        test_payload = {"test": "ack_test"}
+        mq.publish(queue_name, test_payload)
+        processed_event = threading.Event()
+
+        def message_handler(msg: ReceivedMessage):
+            processed_event.set()
+
+        mq.consume(queue_name, message_handler, auto_ack=False)
+
+        assert processed_event.wait(timeout=5), "Message not processed"
+        time.sleep(2)
+        message = mq.get_simple(queue_name)
+        assert message is None
+        mq.stop_consuming()
+
+
+@pytest.mark.integration
+@pytest.mark.timeout(15)
+def test_nack_requeues_message(rabbitmq_connection_params):
+    """Test that nack with requeue=True returns message to queue."""
+    queue_name = f"test_nack_{uuid.uuid4().hex}"
+    _verify_rabbitmq_available(rabbitmq_connection_params)
+    params = _build_connection_params(rabbitmq_connection_params)
+
+    mq = RabbitMQQueue(**params)
+    with mq:
+        mq.declare_queue(queue_name, auto_delete=False)
+
+        test_payload = {"test": "nack_test"}
+        mq.publish(queue_name, test_payload)
+
+        def message_handler(msg: ReceivedMessage):
+            raise RuntimeError("Simulated processing error")
+
+        mq.consume(queue_name, message_handler, auto_ack=False)
+        sleep(1)
+        mq.stop_consuming()
+
+        mq.connect()
+        remaining_message = mq.get_simple(queue_name)
+        assert remaining_message.body == b'{"test": "nack_test"}', "Message removed after final nack"
+        mq.delete_queue(queue_name)
+
+
+# Helpers remain the same with minor improvements
+def _verify_rabbitmq_available(params):
+    try:
+        creds = pika.PlainCredentials(params["login"], params["password"])
+        conn = pika.BlockingConnection(
+            pika.ConnectionParameters(
+                host=params["host"],
+                port=params["port"],
+                credentials=creds,
+                connection_attempts=1,
+                blocked_connection_timeout=3,
+                socket_timeout=3,
+            )
+        )
+        conn.close()
+    except Exception as e:
+        pytest.skip(f"RabbitMQ unavailable: {str(e)}")
+
+
+def _build_connection_params(params):
+    return {
+        "host": params["host"],
+        "port": params["port"],
+        "username": params["login"],
+        "password": params["password"],
+        "blocked_connection_timeout": 3,
+        "heartbeat": 0,
+    }
+
+
+def _wait_for_condition(condition, timeout=5, interval=0.1):
+    start = time.time()
+    while time.time() - start < timeout:
+        if condition():
+            return
+        time.sleep(interval)
+    pytest.fail("Condition not met within timeout")
 

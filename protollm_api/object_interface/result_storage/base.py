@@ -14,11 +14,12 @@ class ResultStorage(ABC):
     """
 
     @abstractmethod
-    def create_job_status(self, job_id: str) -> None:
+    def create_job_status(self, job_id: str, prompt: str) -> None:
         """Create a new job entry in the storage with pending status.
 
         Args:
             job_id (str): Unique identifier for the job.
+            prompt (str) : Prompt for the job.
         """
         pass
 
