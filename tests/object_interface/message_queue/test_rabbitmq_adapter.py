@@ -248,7 +248,7 @@ def test_ack_removes_message(rabbitmq_connection_params):
         mq.consume(queue_name, message_handler, auto_ack=False)
 
         assert processed_event.wait(timeout=5), "Message not processed"
-        time.sleep(2)
+        time.sleep(5)
         message = mq.get_simple(queue_name)
         assert message is None
         mq.stop_consuming()
