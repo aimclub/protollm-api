@@ -7,7 +7,8 @@ class Config:
             inner_llm_url: str = "localhost:8670",
             redis_host: str = "localhost",
             redis_port: int = 6379,
-            redis_prefix: str = "llm-api",
+            redis_prefix_for_status: str = "job-status",
+            redis_prefix_for_answer: str = "job-answer",
             rabbit_host: str = "localhost",
             rabbit_port: int = 5672,
             rabbit_login: str = "admin",
@@ -19,7 +20,8 @@ class Config:
         self.inner_lln_url = inner_llm_url
         self.redis_host = redis_host
         self.redis_port = redis_port
-        self.redis_prefix = redis_prefix
+        self.redis_prefix_for_status = redis_prefix_for_status
+        self.redis_prefix_for_answer = redis_prefix_for_answer
         self.rabbit_host = rabbit_host
         self.rabbit_port = rabbit_port
         self.rabbit_login = rabbit_login
@@ -34,7 +36,8 @@ class Config:
             os.environ.get("INNER_LLM_URL"),
             os.environ.get("REDIS_HOST"),
             int(os.environ.get("REDIS_PORT")),
-            os.environ.get("REDIS_PREFIX"),
+            os.environ.get("REDIS_PREFIX_FOR_STATUS"),
+            os.environ.get("REDIS_PREFIX_FOR_ANSWER"),
             os.environ.get("RABBIT_MQ_HOST"),
             int(os.environ.get("RABBIT_MQ_PORT")),
             os.environ.get("RABBIT_MQ_LOGIN"),
@@ -56,7 +59,8 @@ class Config:
             env_vars.get("INNER_LLM_URL"),
             env_vars.get("REDIS_HOST"),
             int(env_vars.get("REDIS_PORT")),
-            env_vars.get("REDIS_PREFIX"),
+            env_vars.get("REDIS_PREFIX_FOR_STATUS"),
+            env_vars.get("REDIS_PREFIX_FOR_ANSWER"),
             env_vars.get("RABBIT_MQ_HOST"),
             int(env_vars.get("RABBIT_MQ_PORT")),
             env_vars.get("RABBIT_MQ_LOGIN"),

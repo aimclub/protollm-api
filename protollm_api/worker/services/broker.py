@@ -6,7 +6,8 @@ from protollm_api.backend.models.job_context_models import PromptModel, ChatComp
     PromptWrapper, ChatCompletionTransactionModel
 from protollm_api.object_interface.message_queue.base import ReceivedMessage
 from protollm_api.object_interface.message_queue.rabbitmq_adapter import RabbitMQQueue
-from protollm_api.object_interface.result_storage import RedisResultStorage, JobStatusType
+from protollm_api.object_interface.result_storage import RedisResultStorage, JobStatusType, JobStatusError, \
+    JobStatusErrorType
 
 from protollm_api.worker.config import Config
 from protollm_api.worker.models.base import BaseLLM
@@ -39,7 +40,8 @@ class LLMWrap:
 
         self.redis_bd = RedisResultStorage(redis_host=config.redis_host, redis_port=config.redis_port)
         self.rabbitMQ = RabbitMQQueue(host= config.rabbit_host, port= config.rabbit_port, username= config.rabbit_login, password= config.rabbit_password)
-        self.redis_prefix = config.redis_prefix
+        self.status_prefix = config.redis_prefix_for_status
+        self.result_prefix = config.redis_prefix_for_answer
         logger.info('Connected to Redis')
 
         self.models = {
@@ -89,10 +91,22 @@ class LLMWrap:
         prompt_wrapper = PromptWrapper(prompt=json.loads(body)['kwargs'])
         transaction: PromptTransactionModel | ChatCompletionTransactionModel = prompt_wrapper.prompt
 
-        self.redis_bd.update_job_status(f'{self.redis_prefix}:{transaction.prompt.job_id}', JobStatusType.IN_PROGRESS, "working")
-
-        func_result = self.llm(transaction)
-        logger.info(f'The LLM response for task {transaction.prompt.job_id} has been generated')
-        logger.info(f'{self.redis_prefix}:{transaction.prompt.job_id}\n{func_result}')
-        self.redis_bd.complete_job(f'{self.redis_prefix}:{transaction.prompt.job_id}', func_result)
+        self.redis_bd.update_job_status(f'{self.status_prefix}:{transaction.prompt.job_id}', JobStatusType.IN_PROGRESS, "working")
+        try:
+            func_result = self.llm(transaction)
+        except Exception as e:
+            logger.info(f'The LLM response for task {transaction.prompt.job_id} has not been generated')
+            logger.info(f'{self.status_prefix}:{transaction.prompt.job_id}\n{e}')
+            self.redis_bd.complete_job(job_id= transaction.prompt.job_id,
+                                       error=JobStatusError(type=JobStatusErrorType.Exception,
+                                                            msg=str(e)),
+                                       status_prefix=f"{self.status_prefix}:",
+                                       result_prefix=f"{self.result_prefix}:")
+        else:
+            logger.info(f'The LLM response for task {transaction.prompt.job_id} has been generated')
+            logger.info(f'{self.status_prefix}:{transaction.prompt.job_id}\n{func_result}')
+            self.redis_bd.complete_job(job_id= transaction.prompt.job_id,
+                                       result= func_result,
+                                       status_prefix= f"{self.status_prefix}:",
+                                       result_prefix= f"{self.result_prefix}:")
         logger.info(f'The response for task {transaction.prompt.job_id} was written to Redis')
