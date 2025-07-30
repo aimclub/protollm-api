@@ -1,4 +1,5 @@
 import logging
+from time import sleep
 
 from llama_cpp import Llama
 from protollm_api.backend.models.job_context_models import PromptModel, ChatCompletionModel, PromptTransactionModel, \
@@ -11,12 +12,13 @@ logger = logging.getLogger(__name__)
 
 
 class CppModel(LocalLLM ,BaseLLM):
-    def __init__(self, model_path, n_ctx=8192):
+    def __init__(self, model_path, n_ctx=4096):
+        #sleep(1000)
         super().__init__(model_path)
 
         self.model = Llama(
             model_path=model_path,
-            n_ctx=n_ctx * 2,
+            n_ctx=n_ctx,
             verbose=True,
             n_gpu_layers=-1,
         )

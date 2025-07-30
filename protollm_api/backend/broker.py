@@ -70,5 +70,5 @@ async def get_result(config: Config, task_id: str, redis_db: RedisResultStorage)
     """
     logger.info(f"Trying to get data from Redis")
     logger.info(f"Redis key: {config.redis_prefix}:{task_id}")
-    job_status = redis_db.wait_completeness(f"{config.redis_prefix}:{task_id}")
+    job_status = redis_db.wait_completeness(f"{config.redis_prefix}:{task_id}", 180)
     return ResponseModel(content= job_status.result)
