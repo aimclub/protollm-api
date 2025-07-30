@@ -75,8 +75,8 @@ class LocalLLM(BaseLLM, ABC):
         :param n_ctx: Context size for the model (default is 8192).
         :raises ValueError: If the provided path is invalid.
         """
-        if not os.path.exists(model_path_or_url):
-            raise ValueError("Invalid model_path_or_url. Must be a valid path")
+        # if not os.path.exists(model_path_or_url):
+        #     raise ValueError("Invalid model_path_or_url. Must be a valid path")
 
     def generate(
             self,
