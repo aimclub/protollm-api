@@ -15,18 +15,17 @@ from protollm_api.object_interface.result_storage.models import (
 # Positive tests (test valid values)
 
 @pytest.mark.parametrize(
-    "status, status_message, result",
+    "status, status_message",
     [
-        (JobStatusType.PENDING, "queued", None),
-        (JobStatusType.IN_PROGRESS, "running", None),
-        (JobStatusType.COMPLETED, "done", '{"answer": 42}'),
+        (JobStatusType.PENDING, "queued"),
+        (JobStatusType.IN_PROGRESS, "running"),
+        (JobStatusType.COMPLETED, "done"),
     ],
 )
-def test_job_status_valid(status: JobStatusType, status_message: str, result: str | None) -> None:
-    model = JobStatus(status=status, status_message=status_message, result=result)
+def test_job_status_valid(status: JobStatusType, status_message: str) -> None:
+    model = JobStatus(status=status, status_message=status_message)
     assert model.status is status
     assert model.status_message == status_message
-    assert model.result == result
     assert isinstance(model.last_update, str)
     assert model.is_completed is False
 
