@@ -1,26 +1,18 @@
 import logging
 from time import sleep
 
-from llama_cpp import Llama
 from protollm_api.backend.models.job_context_models import PromptModel, ChatCompletionModel, PromptTransactionModel, \
     ChatCompletionTransactionModel, PromptTypes
 
-from protollm_api.worker.models.base import BaseLLM, LocalLLM
+from protollm_api.worker.models.base import BaseLLM, APIlLLM
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
-class CppModel(LocalLLM ,BaseLLM):
-    def __init__(self, model_path, n_ctx=4096):
-        super().__init__(model_path)
-
-        self.model = Llama(
-            model_path=model_path,
-            n_ctx=n_ctx,
-            verbose=True,
-            n_gpu_layers=-1,
-        )
+class FakeModel(APIlLLM ,BaseLLM):
+    def __init__(self):
+        super().__init__("http://example", "test_token")
         self.handlers = {
             PromptTypes.SINGLE_GENERATION.value: self.generate,
             PromptTypes.CHAT_COMPLETION.value: self.create_completion,
@@ -40,21 +32,8 @@ class CppModel(LocalLLM ,BaseLLM):
             stop_words=None,
             **kwargs
     ):
-        if temperature is None:
-            temperature = 0.5
-        if stop_words is None:
-            stop_words = []
         logger.info(f"start generated from single prompt {prompt.content} and temp {temperature}")
-        generated_text = self.model(
-            prompt.content,
-            temperature=temperature,
-            repeat_penalty=repeat_penalty,
-            max_tokens=tokens_limit,
-            stop=stop_words,
-
-        )
-        response = generated_text['choices'][0]['text']
-        return response
+        return f"Test answer (your prompt):{prompt.content}"
 
     def create_completion(
             self,
@@ -65,17 +44,9 @@ class CppModel(LocalLLM ,BaseLLM):
             stop_words=None,
             **kwargs
     ):
-        if temperature is None:
-            temperature = 0.5
-        if stop_words is None:
-            stop_words = []
+        if temperature == 1:
+            raise RuntimeError("Simulated processing error")
+        if temperature == 2:
+            sleep(100)
         logger.info(f"start generated from chat completion {prompt.messages}")
-        messages = prompt.model_dump()['messages']
-        response = self.model.create_chat_completion(
-            messages=messages,
-            temperature=temperature,
-            repeat_penalty=repeat_penalty,
-            max_tokens=tokens_limit,
-            stop=stop_words,
-        )
-        return response['choices'][0]['message']['content']
+        return f"Test answer (your prompt) :{prompt.messages[0]}"

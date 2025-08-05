@@ -87,5 +87,5 @@ async def get_result(config: Config, task_id: str, redis_db: RedisResultStorage)
         job_result = redis_db.get_job_result(f"{config.redis_prefix_for_answer}:{task_id}")
         return ResponseModel(content= job_result.result)
     if job_status.status == JobStatusType.ERROR:
-        return ResponseModel(content=str(job_status.error))
+        return ResponseModel(content=str(job_status.error.msg))
     return ResponseModel(content="Somthing goes wrong and job do not finished")
