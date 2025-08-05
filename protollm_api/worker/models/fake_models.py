@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 
 class FakeModel(APIlLLM ,BaseLLM):
     def __init__(self):
-        super().__init__("http://cringe", "lol_kek")
+        super().__init__("http://example", "test_token")
         self.handlers = {
             PromptTypes.SINGLE_GENERATION.value: self.generate,
             PromptTypes.CHAT_COMPLETION.value: self.create_completion,
@@ -33,7 +33,7 @@ class FakeModel(APIlLLM ,BaseLLM):
             **kwargs
     ):
         logger.info(f"start generated from single prompt {prompt.content} and temp {temperature}")
-        return f"GOOOL :{prompt.content}"
+        return f"Test answer (your prompt):{prompt.content}"
 
     def create_completion(
             self,
@@ -49,4 +49,4 @@ class FakeModel(APIlLLM ,BaseLLM):
         if temperature == 2:
             sleep(100)
         logger.info(f"start generated from chat completion {prompt.messages}")
-        return f"GOOOL :{prompt.messages[0]}"
+        return f"Test answer (your prompt) :{prompt.messages[0]}"

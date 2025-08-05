@@ -13,7 +13,6 @@ logger = logging.getLogger(__name__)
 
 class CppModel(LocalLLM ,BaseLLM):
     def __init__(self, model_path, n_ctx=4096):
-        #sleep(1000)
         super().__init__(model_path)
 
         self.model = Llama(

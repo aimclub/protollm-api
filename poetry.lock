@@ -1298,7 +1298,11 @@ files = [
     {file = "wcwidth-0.2.13.tar.gz", hash = "sha256:72ea0c06399eb286d978fdedb6923a9eb47e1c486ce63e9b4e64fc18303972b5"},
 ]
 
+[extras]
+llama-cpp = []
+openai = []
+
 [metadata]
 lock-version = "2.1"
 python-versions = "^3.10"
-content-hash = "45a7cd4afaaab78df8907d90dfa8625630b74e8dbf68f8d3e97ac8da57345c86"
+content-hash = "4d6c8590e559a55620ad0138c9b6820a887b2af26eddb41dbcce3ca984462aaf"

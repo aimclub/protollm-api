@@ -1,18 +1,18 @@
 FROM nginx/unit:1.28.0-python3.10
 
-# Установка зависимостей
+# Install dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends git
 
-# Рабочая директория
+# Working directory
 WORKDIR /app
 
-# Копируем зависимости и устанавливаем
+# Copy and install dependencies
 COPY requirements.txt .
 RUN pip install --upgrade pip && pip install -r requirements.txt
 
-# Копируем код (измените пути на корректные)
+# Copy the code (adjust paths if needed)
 COPY ./protollm_api ./protollm_api
 COPY ./unit_config.json /docker-entrypoint.d/config.json
 
-# Unit будет автоматически запускать API по конфигу
-# Для воркера используем отдельный entrypoint
+# Unit will automatically start the API using the config
+# For the worker, use a separate entrypoint

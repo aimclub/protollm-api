@@ -3,7 +3,7 @@ version: '3.5'
 services:
   api:
     container_name: protollm-api
-    image: llm-api-image
+    image: protollm/api:backend
     build:
       context: .
       dockerfile: Dockerfile
@@ -14,7 +14,7 @@ services:
     volumes:
       - ./unit_config.json:/docker-entrypoint.d/unit_config.json
     networks:
-      - llm_wrap_network
+      - protollm-network
 
   rabbitmq:
     image: "rabbitmq:3-management"
@@ -26,7 +26,7 @@ services:
     volumes:
       - rabbitmq_data:/var/lib/rabbitmq
     networks:
-      - llm_wrap_network
+      - protollm-network
 
   redis:
     image: "redis:alpine"
@@ -35,11 +35,11 @@ services:
     volumes:
       - redis_data:/var/lib/data
     networks:
-      - llm_wrap_network
+      - protollm-network
 
   llm:
     container_name: protollm-worker
-    image: llm-core:latest
+    image: protollm/worker:api
     #    runtime: nvidia
     #    deploy:
     #      resources:
@@ -55,15 +55,15 @@ services:
     ports:
       - ${LLM_WORKER_PORT}:8672
     networks:
-      - llm_wrap_network
+      - protollm-network
     restart: unless-stopped
     environment:
       - PYTHONPATH=/app
     command: ["python", "protollm_api/worker/main.py"]
 
 networks:
-  llm_wrap_network:
-    name: llm_wrap_network
+  protollm-network:
+    name: protollm-network
     driver: bridge
 
 volumes:
