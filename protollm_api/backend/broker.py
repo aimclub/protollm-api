@@ -78,7 +78,7 @@ async def get_result(config: Config, task_id: str, redis_db: RedisResultStorage)
     logger.info(f"Trying to get data from Redis")
     logger.info(f"Redis key: {config.redis_prefix_for_status}:{task_id}")
     try:
-        job_status = redis_db.wait_completeness(f"{config.redis_prefix_for_status}:{task_id}")
+        job_status = redis_db.wait_completeness(f"{config.redis_prefix_for_status}:{task_id}", config.timeout)
     except TimeoutError as te:
         return ResponseModel(content=f"Job dont finish in fixed time with Error:\n{str(te)}")
     except Exception as e:

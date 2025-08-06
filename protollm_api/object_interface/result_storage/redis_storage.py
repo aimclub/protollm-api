@@ -138,7 +138,6 @@ class RedisResultStorage(ResultStorage):
             job_id (str): The unique identifier for the job.
             status (JobStatusType): New status of the job.
             status_message (Optional[str]): Optional status message.
-            result (Optional[JobResultType]): The result of the job if completed successfully.
             error (Optional[JobStatusError]): The error if the job failed.
         """
         job = self.__load_job_status(job_id)

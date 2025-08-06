@@ -4,8 +4,6 @@ from dbm.dumb import error
 from unittest.mock import AsyncMock, patch, MagicMock, ANY, Mock
 
 import pytest
-from jinja2.nodes import Assign
-
 from protollm_api.backend.models.job_context_models import ResponseModel, ChatCompletionTransactionModel, ChatCompletionModel, \
     PromptMeta, ChatCompletionUnit, PromptTypes
 
@@ -44,7 +42,8 @@ async def test_get_result(test_local_config):
 
     response = await get_result(test_local_config, task_id, redis_mock)
 
-    redis_mock.wait_completeness.assert_called_once_with(f"{test_local_config.redis_prefix_for_status}:{task_id}")
+    redis_mock.wait_completeness.assert_called_once_with(f"{test_local_config.redis_prefix_for_status}:{task_id}",
+                                                         test_local_config.timeout)
     redis_mock.get_job_result.assert_called_once_with(f"{test_local_config.redis_prefix_for_answer}:{task_id}")
     assert response == ResponseModel(content="return test success")
 
@@ -60,7 +59,8 @@ async def test_get_result_with_error(test_local_config):
 
     response = await get_result(test_local_config, task_id, redis_mock)
 
-    redis_mock.wait_completeness.assert_called_once_with(f"{test_local_config.redis_prefix_for_status}:{task_id}")
+    redis_mock.wait_completeness.assert_called_once_with(f"{test_local_config.redis_prefix_for_status}:{task_id}",
+                                                         test_local_config.timeout)
     assert response == ResponseModel(content="Error")
 
 
