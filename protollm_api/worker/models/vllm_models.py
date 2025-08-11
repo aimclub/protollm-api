@@ -16,7 +16,7 @@ class VllMModel(LocalLLM, BaseLLM):
     and chat-based completions.
     """
 
-    def __init__(self, model_path, tensor_parallel_size, gpu_memory_utilisation, tokens_len, n_ctx=8192):
+    def __init__(self, model_path, tensor_parallel_size, gpu_memory_utilisation, tokens_len, n_ctx=4096):
         """
         Initialize the vLLM-based model.
 
