@@ -13,10 +13,10 @@ pydantic = "^2.7.4"
 flower = "2.0.1"
 fastapi = "^0.115.13"
 aioredis = "^2.0.1"
-#openai = {version = "^1.88.0", extras = ["openai"]}
+#vllm = "^0.7.2"
 #llama-cpp-python = {version = "^0.3.3", extras = ["llama-cpp"]}
 openai = {version = "^1.88.0", extras = ["openai"]}
-vllm = {version = "^0.10.0", extras = ["vllm"]}
+#vllm = {version = "^0.7.2", extras = ["vllm"]}
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.2.2"
