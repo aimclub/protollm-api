@@ -1,7 +1,9 @@
 from enum import Enum
-from typing import Literal, Union
+from typing import Literal, Union, Optional
 
 from pydantic import BaseModel, Field
+
+from protollm_api.object_interface.result_storage import JobStatusType
 
 
 class PromptTypes(Enum):
@@ -69,6 +71,13 @@ class PromptWrapper(BaseModel):
 
 class ResponseModel(BaseModel):
     content: str
+
+
+class AsyncResponseModel(BaseModel):
+    job_id: str
+    job_status: JobStatusType
+    content: Optional[str] = None
+    error: Optional[str] = None
 
 
 class LLMResponse(BaseModel):
