@@ -77,4 +77,8 @@ class AsyncChatCompletionService(BaseBLLService):
         Returns:
             ResponseModel: Model containing the LLM response if job is done
         """
-        return await check_result(self.config, job_id, self.redis_db)
+        try:
+            return await check_result(self.config, job_id, self.redis_db)
+        except Exception as e:
+            logger.error(f"Failed in getting {job_id} status. Error: {e}")
+            raise e

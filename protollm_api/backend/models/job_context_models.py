@@ -3,8 +3,6 @@ from typing import Literal, Union, Optional
 
 from pydantic import BaseModel, Field
 
-from protollm_api.object_interface.result_storage import JobStatusType
-
 
 class PromptTypes(Enum):
     SINGLE_GENERATION: str = "single_generation"
@@ -75,7 +73,7 @@ class ResponseModel(BaseModel):
 
 class AsyncResponseModel(BaseModel):
     job_id: str
-    job_status: JobStatusType
+    job_status: str
     content: Optional[str] = None
     error: Optional[str] = None
 

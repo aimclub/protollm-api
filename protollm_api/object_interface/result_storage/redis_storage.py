@@ -4,6 +4,7 @@ from typing import Optional, Iterable
 
 import redis
 
+from protollm_api.backend.exeption import JobNotFoundError
 from protollm_api.backend.models.job_context_models import ChatCompletionModel
 from protollm_api.utils.utils import current_time
 from protollm_api.object_interface.result_storage.base import ResultStorage
@@ -78,7 +79,7 @@ class RedisResultStorage(ResultStorage):
         """
         data = self._redis.get(job_id)
         if data is None:
-            raise Exception(f"Job {job_id} not found in Redis.")
+            raise JobNotFoundError(f"Job {job_id} not found in Redis.")
         return JobStatus.model_validate_json(data)
 
     def __load_job_result(self, job_id: str) -> JobResult:
@@ -92,7 +93,7 @@ class RedisResultStorage(ResultStorage):
         """
         data = self._redis.get(job_id)
         if data is None:
-            raise Exception(f"Job {job_id} not found in Redis.")
+            raise JobNotFoundError(f"Job {job_id} not found in Redis.")
         return JobResult.model_validate_json(data)
 
     def __save_job_status(self, job_id: str, job: JobStatus) -> None:

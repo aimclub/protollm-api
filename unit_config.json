@@ -8,7 +8,7 @@
         "backend": {
             "type": "python",
             "path": ".",
-            "module": "protollm_api.backend.main",
+            "module": "protollm_api.backend.example",
             "callable": "app"
         }
     }

@@ -27,7 +27,7 @@ def init_vllm_llm():
 
 if __name__ == "__main__":
     config = Config.read_from_env()
-    llm_model = init_fake_llm
+    llm_model = init_fake_llm()
     llm_wrap = LLMWrap(llm_model=llm_model,
                        config= config)
     llm_wrap.start_connection()

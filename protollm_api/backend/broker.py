@@ -1,5 +1,6 @@
 import logging
 
+from protollm_api.backend.exeption import JobNotFoundError
 from protollm_api.object_interface.message_queue.rabbitmq_adapter import RabbitMQQueue
 from protollm_api.backend.config import Config
 from protollm_api.backend.models.job_context_models import (
@@ -105,8 +106,8 @@ async def check_result(config: Config, task_id: str, redis_db: RedisResultStorag
     try:
         job_status = redis_db.get_job_status(f"{config.redis_prefix_for_status}:{task_id}")
     except Exception as e:
-        response.content =f"Job checking status finish with Error: {e.args}"
-        return response
+        logger.error(f"Failed in checking {task_id} status. Error: {e}")
+        raise e
     response.job_status = job_status.status
     if job_status.status == JobStatusType.COMPLETED:
         job_result = redis_db.get_job_result(f"{config.redis_prefix_for_answer}:{task_id}")
