@@ -1,13 +1,11 @@
-import json
 import uuid
-from dbm.dumb import error
-from unittest.mock import AsyncMock, patch, MagicMock, ANY, Mock
+from unittest.mock import MagicMock, ANY, Mock
 
 import pytest
 from protollm_api.backend.models.job_context_models import ResponseModel, ChatCompletionTransactionModel, ChatCompletionModel, \
     PromptMeta, ChatCompletionUnit, PromptTypes
 
-from protollm_api.backend.broker import send_task, get_result
+from protollm_api.backend.broker import send_task, get_result, check_result
 from protollm_api.object_interface.result_storage import JobStatus, JobStatusType, JobStatusError, JobStatusErrorType
 from protollm_api.object_interface.result_storage.models import JobResult
 
@@ -73,3 +71,70 @@ async def test_get_result_with_exception(test_local_config):
     response = await get_result(test_local_config, task_id, redis_mock)
 
     assert response == ResponseModel(content="Job waiting finish with Error:\nRedis error")
+
+
+@pytest.mark.asyncio
+async def test_check_result_completed(test_local_config):
+    redis_mock = MagicMock()
+    expected_job_result = JobResult(result="test_check_result_success")
+    redis_mock.get_job_status = Mock(return_value=JobStatus(status=JobStatusType.COMPLETED, is_completed=True))
+    redis_mock.get_job_result = Mock(return_value=expected_job_result)
+    task_id = str(uuid.uuid4())
+
+    response = await check_result(test_local_config, task_id, redis_mock)
+
+    redis_mock.get_job_status.assert_called_once_with(f"{test_local_config.redis_prefix_for_status}:{task_id}")
+    redis_mock.get_job_result.assert_called_once_with(f"{test_local_config.redis_prefix_for_answer}:{task_id}")
+    assert response.job_id == task_id
+    assert response.job_status == JobStatusType.COMPLETED
+    assert response.content == expected_job_result
+    assert response.error is None
+
+
+@pytest.mark.asyncio
+async def test_check_result_error(test_local_config):
+    redis_mock = MagicMock()
+    error_message = "Test error message"
+    redis_mock.get_job_status = Mock(
+        return_value=JobStatus(status=JobStatusType.ERROR, is_completed=True,
+                               error=JobStatusError(type=JobStatusErrorType.Exception, msg=error_message))
+    )
+    task_id = str(uuid.uuid4())
+
+    response = await check_result(test_local_config, task_id, redis_mock)
+
+    redis_mock.get_job_status.assert_called_once_with(f"{test_local_config.redis_prefix_for_status}:{task_id}")
+    redis_mock.get_job_result.assert_not_called()
+    assert response.job_id == task_id
+    assert response.job_status == JobStatusType.ERROR
+    assert response.content is None
+    assert response.error == error_message
+
+
+@pytest.mark.asyncio
+async def test_check_result_pending(test_local_config):
+    redis_mock = MagicMock()
+    redis_mock.get_job_status = Mock(return_value=JobStatus(status=JobStatusType.PENDING, is_completed=False))
+    task_id = str(uuid.uuid4())
+
+    response = await check_result(test_local_config, task_id, redis_mock)
+
+    redis_mock.get_job_status.assert_called_once_with(f"{test_local_config.redis_prefix_for_status}:{task_id}")
+    redis_mock.get_job_result.assert_not_called()
+    assert response.job_id == task_id
+    assert response.job_status == JobStatusType.PENDING
+    assert response.content == "job do not finished"
+    assert response.error is None
+
+
+@pytest.mark.asyncio
+async def test_check_result_with_exception(test_local_config):
+    redis_mock = MagicMock()
+    redis_mock.get_job_status = Mock(side_effect=Exception("Redis connection error"))
+    task_id = str(uuid.uuid4())
+
+    with pytest.raises(Exception, match="Redis connection error"):
+        await check_result(test_local_config, task_id, redis_mock)
+
+    redis_mock.get_job_status.assert_called_once_with(f"{test_local_config.redis_prefix_for_status}:{task_id}")
+    redis_mock.get_job_result.assert_not_called()
