@@ -1,5 +1,5 @@
 from enum import Enum
-from typing import Literal, Union
+from typing import Literal, Union, Optional
 
 from pydantic import BaseModel, Field
 
@@ -69,6 +69,13 @@ class PromptWrapper(BaseModel):
 
 class ResponseModel(BaseModel):
     content: str
+
+
+class AsyncResponseModel(BaseModel):
+    job_id: str
+    job_status: str
+    content: Optional[str] = None
+    error: Optional[str] = None
 
 
 class LLMResponse(BaseModel):

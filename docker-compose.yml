@@ -59,7 +59,7 @@ services:
     restart: unless-stopped
     environment:
       - PYTHONPATH=/app
-    command: ["python", "protollm_api/worker/main.py"]
+    command: ["python", "protollm_api/worker/example.py"]
 
 networks:
   protollm-network:

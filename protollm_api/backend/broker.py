@@ -1,13 +1,10 @@
 import logging
-from lib2to3.fixes.fix_input import context
 
-from celery.bin.result import result
-from click import prompt
-
+from protollm_api.backend.exeption import JobNotFoundError
 from protollm_api.object_interface.message_queue.rabbitmq_adapter import RabbitMQQueue
 from protollm_api.backend.config import Config
 from protollm_api.backend.models.job_context_models import (
-    ResponseModel, ChatCompletionTransactionModel, PromptTransactionModel)
+    ResponseModel, ChatCompletionTransactionModel, PromptTransactionModel, AsyncResponseModel)
 from protollm_api.object_interface.result_storage import RedisResultStorage, JobStatusType
 
 logging.basicConfig(level=logging.INFO)
@@ -89,3 +86,35 @@ async def get_result(config: Config, task_id: str, redis_db: RedisResultStorage)
     if job_status.status == JobStatusType.ERROR:
         return ResponseModel(content=str(job_status.error.msg))
     return ResponseModel(content="Somthing goes wrong and job do not finished")
+
+
+async def check_result(config: Config, task_id: str, redis_db: RedisResultStorage) -> AsyncResponseModel:
+    """
+    Check completeness the result of a task from Redis.
+
+    Args:
+        config (Config): Configuration object containing Redis connection details.
+        task_id (str): ID of the task whose result is to be retrieved.
+        redis_db (RedisResultStorage): Redis wrapper object to interact with the Redis database.
+
+    Returns:
+        ResponseModel: Parsed response model containing the result if it is done.
+    """
+    response = AsyncResponseModel(job_id=task_id, job_status=JobStatusType.ERROR)
+    logger.info(f"Trying to get data from Redis")
+    logger.info(f"Redis key: {config.redis_prefix_for_status}:{task_id}")
+    try:
+        job_status = redis_db.get_job_status(f"{config.redis_prefix_for_status}:{task_id}")
+    except Exception as e:
+        logger.error(f"Failed in checking {task_id} status. Error: {e}")
+        raise e
+    response.job_status = job_status.status
+    if job_status.status == JobStatusType.COMPLETED:
+        job_result = redis_db.get_job_result(f"{config.redis_prefix_for_answer}:{task_id}")
+        response.content = job_result
+        return response
+    if job_status.status == JobStatusType.ERROR:
+        response.error = str(job_status.error.msg)
+        return response
+    response.content = "job do not finished"
+    return response

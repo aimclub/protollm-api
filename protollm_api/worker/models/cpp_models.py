@@ -1,5 +1,4 @@
 import logging
-from time import sleep
 
 from llama_cpp import Llama
 from protollm_api.backend.models.job_context_models import PromptModel, ChatCompletionModel, PromptTransactionModel, \
